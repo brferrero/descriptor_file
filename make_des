@@ -3,6 +3,9 @@
 #
 # Author: Andrew Wittenberg
 # Version dated 7 April 2004
+# --------- list of modifications by Tiago Bomventi ----------
+# 1) if dont find unlimited axis, search for a axis named 'time'
+# 2) break t0_hms in hours, minutes and seconds. use sprintf to re-format the date
 
 use Getopt::Long;
 
@@ -72,8 +75,8 @@ NOTES
    (3) DODS URLs may be used in addition to NetCDF files,
    if the "ncdump" or "dncdump" utility is DODS-enabled.
 
-   (4) In Ferret, use the descriptor file as follows:
-      yes? use "file.des"
+   (4) In Ferret, use the "file.des" WITHOUT its extension:
+      yes? use file
 
    (5) Due to an inherent limitation of Ferret descriptors, time
    coordinates for each NetCDF file will have a uniform increment of
@@ -154,13 +157,13 @@ if ($opt_dmget) {
    }
 
 # define and verify the ncdump command
-if (not $opt_nodods and system("which dncdump >&/dev/null") == 0) {
+if (not $opt_nodods and system("dncdump") == 0) {
    $ncdump = "dncdump";
    }
 else {
-   $ncdump = "ncdump";
+   $ncdump = "/usr/local/bin/ncdump";
    }
-die "ERROR in make_des: utility '$ncdump' does not exist on this platform.\n" unless system("which $ncdump >&/dev/null") == 0;
+die "ERROR in make_des: utility '$ncdump' does not exist on this platform.\n" unless system("$ncdump") == 0;
 
 # connect to the header of the first NetCDF file
 open(NCHEADER,"$ncdump -c $prefix$ARGV[0]$suffix |") or die "ERROR in make_des: could not open input data $prefix$ARGV[0]$suffix\n";
@@ -170,6 +173,11 @@ while (defined($_ = <NCHEADER>) and not defined($time_axis_name)) {
    if (s/\s*(\w+) = UNLIMITED.*\((\d+) currently\).*\n/\1 \2/) {
       ($time_axis_name,$ntime) = split;
       }
+   else {
+       if (s/\s*([Tt][Ii][Mm][Ee]) = (\d+) .*\n/\1 \2/) {
+           ($time_axis_name,$ntime) = split;
+       }
+   }
    }
 
 while (defined($_ = <NCHEADER>) and ($_ ne "data:\n")) {
@@ -247,7 +255,9 @@ $num_seconds = $to_seconds{$time_units};
 $t0_mon += 0;
 
 # construct the descriptor T0 date string
-$zero_date_des = "$t0_day-$month_names{$t0_mon}-$t0_yr";
+$zero_date_des = sprintf("%02d-%s-%04d",$t0_day,$month_names{$t0_mon},$t0_yr);
+($t0_h,$t0_m,$t0_s) = split(":",$t0_hms);
+$t0_hms = sprintf("%02d:%02d:%02d",$t0_h,$t0_m,$t0_s);
 
 # write the header info
 print "${record_start}FORMAT_RECORD\n";
@@ -289,6 +299,11 @@ foreach $filename(@ARGV) {
       if (s/\s*(\w+) = UNLIMITED.*\((\d+) currently\).*\n/\1 \2/) {
          ($time_axis_name,$ntime) = split;
          }
+      else {
+         if (s/\s*([Tt][Ii][Mm][Ee]) = (\d+) .*\n/\1 \2/) {
+           ($time_axis_name,$ntime) = split;
+         }
+      }
       }
 
    # read up to the data section
@@ -300,7 +315,7 @@ foreach $filename(@ARGV) {
    undef $time_start;
    undef $time_end;
    while (defined($_ = <NCHEADER>) and not defined($time_start)) {
-      @fields = split;
+      @fields = split;      
       if ($fields[0] eq $time_axis_name) {
          if ($#fields >= 3) {
             # two or more time coordinates
